@@ -1,6 +1,5 @@
 import os
 import psycopg2
-from psycopg2 import sql
 from dotenv import load_dotenv
 from faker import Faker
 import uuid
@@ -8,22 +7,13 @@ import random
 from datetime import time
 import sys
 
-load_dotenv("credentials.env")
+load_dotenv(credentials.env)
 
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
+DB_HOST = os.getenv("DB_HOST"),
+DB_PORT = int(os.getenv("DB_PORT")),
+DB_NAME = os.getenv("DB_NAME"),
+DB_USER = os.getenv("DB_USER"),
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-
-# Debug: Print what was loaded
-if not all([DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD]):
-    print("⚠ Warning: Missing environment variables!")
-    print(f"  DB_HOST: {DB_HOST}")
-    print(f"  DB_PORT: {DB_PORT}")
-    print(f"  DB_NAME: {DB_NAME}")
-    print(f"  DB_USER: {DB_USER}")
-    print(f"  DB_PASSWORD: {'***' if DB_PASSWORD else 'NOT SET'}")
 
 NUM_INSTRUCTORS = 50
 NUM_COURSES = 30
@@ -31,7 +21,7 @@ NUM_STUDENTS = 5000
 NUM_ROOMS = 40
 NUM_SCHEDULES = 500000
 
-fake = Faker()
+fake = Faker(['uk_UA'])
 
 
 class DatabaseSeeder:
@@ -41,18 +31,16 @@ class DatabaseSeeder:
 
     def connect(self):
         try:
-            print(f"Connecting to {DB_HOST}:{DB_PORT}/{DB_NAME}...")
             self.conn = psycopg2.connect(
                 host=DB_HOST,
-                port=int(DB_PORT),
+                port=DB_PORT,
                 database=DB_NAME,
                 user=DB_USER,
                 password=DB_PASSWORD
             )
             self.cursor = self.conn.cursor()
-            print("✓ Connected successfully")
         except psycopg2.Error as e:
-            print(f"✗ Connection failed: {e}")
+            print(f"Connection failed: {e}")
             sys.exit(1)
 
     def disconnect(self):
@@ -70,29 +58,26 @@ class DatabaseSeeder:
             self.conn.commit()
         except psycopg2.Error as e:
             self.conn.rollback()
-            print(f"✗ Query failed: {e}")
             raise
 
     def executemany(self, query, data):
         try:
             self.cursor.executemany(query, data)
             self.conn.commit()
-            print(f"✓ Inserted {len(data)} rows")
         except psycopg2.Error as e:
             self.conn.rollback()
-            print(f"✗ Batch insert failed: {e}")
             raise
 
-    def _truncate_phone(self, phone):
-        if phone is None:
+    def truncate_field(self, value, max_length):
+        if value is None:
             return None
-        phone_str = str(phone).strip()
-        if len(phone_str) > 20:
-            phone_str = phone_str[:20]
-        return phone_str
+        s = str(value).strip()
+        if len(s) > max_length:
+            s = s[:max_length]
+        return s
 
     def clear_tables(self):
-        tables_to_clear = [
+        tables = [
             'SCHEDULE',
             'STUDENTS_COURSE_GROUP_STUDENTS',
             'STUDENTS_COURSE_GROUPS',
@@ -105,15 +90,16 @@ class DatabaseSeeder:
             'AUDIT_LOG'
         ]
 
-        print("Clearing tables...")
-        for table in tables_to_clear:
+        for table in tables:
             try:
-                self.execute_query(f"TRUNCATE TABLE {table} CASCADE")
-                print(f"  {table}")
-            except psycopg2.Error as e:
-                print(f"  {table} (skipped: {e})")
+                self.cursor.execute(f"DELETE FROM {table}")
+                self.conn.commit()
+            except psycopg2.Error:
+                self.conn.rollback()
 
     def seed_lessons_schedule(self):
+        print("Seeding LESSONS_SCHEDULE...")
+
         lesson_times = [
             (1, time(8, 0), time(9, 30)),
             (2, time(9, 45), time(11, 15)),
@@ -132,6 +118,8 @@ class DatabaseSeeder:
                 pass
 
     def seed_rooms(self):
+        print("Seeding ROOMS...")
+
         buildings = ['Building A', 'Building B', 'Building C', 'Building D']
         rooms_data = []
 
@@ -140,7 +128,7 @@ class DatabaseSeeder:
                 for room_num in range(1, 11):
                     room_id = str(uuid.uuid4())
                     seats = random.choice([30, 40, 50, 60])
-                    display_name = f"{building} Floor {floor} Room {room_num}"
+                    display_name = f"{building} F{floor} R{room_num}"
 
                     rooms_data.append((
                         room_id,
@@ -157,30 +145,33 @@ class DatabaseSeeder:
         """
 
         self.executemany(query, rooms_data)
+        print(f"  Inserted {len(rooms_data)} rooms")
         return [room[0] for room in rooms_data]
 
     def seed_courses(self):
+        print("Seeding COURSES...")
+
         course_data = [
-            ('CS101', 'Introduction to Programming', 'Learn programming fundamentals', 30, 15),
-            ('CS102', 'Data Structures', 'Master data structures and algorithms', 25, 20),
-            ('CS103', 'Database Design', 'Design and implement databases', 20, 25),
-            ('CS104', 'Web Development', 'Build modern web applications', 20, 30),
-            ('CS105', 'Machine Learning', 'Introduction to ML and AI', 15, 10),
+            ('CS101', 'Intro to Programming', 'Learn programming basics', 30, 15),
+            ('CS102', 'Data Structures', 'Data structures and algorithms', 25, 20),
+            ('CS103', 'Database Design', 'Database design and implementation', 20, 25),
+            ('CS104', 'Web Development', 'Web app development', 20, 30),
+            ('CS105', 'Machine Learning', 'ML and AI introduction', 15, 10),
             ('MATH101', 'Calculus I', 'Differential calculus', 40, 20),
-            ('MATH102', 'Linear Algebra', 'Vectors and matrices', 35, 15),
+            ('MATH102', 'Linear Algebra', 'Linear algebra and vectors', 35, 15),
             ('PHYS101', 'Physics I', 'Mechanics and motion', 30, 20),
-            ('ENG101', 'English Literature', 'Classic and modern literature', 25, 10),
-            ('ENG102', 'Writing Skills', 'Academic and professional writing', 20, 15),
-            ('HIST101', 'World History', 'Ancient to modern history', 35, 5),
+            ('ENG101', 'English Literature', 'Classic literature', 25, 10),
+            ('ENG102', 'Writing Skills', 'Academic writing', 20, 15),
+            ('HIST101', 'World History', 'History overview', 35, 5),
             ('CHEM101', 'Chemistry I', 'General chemistry', 25, 25),
-            ('BIO101', 'Biology I', 'Cell biology and genetics', 30, 20),
+            ('BIO101', 'Biology I', 'Cell biology', 30, 20),
             ('ECON101', 'Microeconomics', 'Economic principles', 40, 10),
-            ('PSYCH101', 'Introduction to Psychology', 'Human behavior and mind', 45, 5),
+            ('PSYCH101', 'Intro Psychology', 'Psychology basics', 45, 5),
         ]
 
         courses = {}
         query = """
-            INSERT INTO COURSES (ID, COURSE_DISPLAY_SHORT_NAME, COURSE_DISPLAY_FULL_NAME,
+            INSERT INTO COURSES (ID, COURSE_DISPLAY_SHORT_NAME, COURSE_DISPLAY_FULL_NAME, 
                                 COURSE_DESCRIPTION, LECTURES_NUM, PRACTICES_NUM)
             VALUES (%s, %s, %s, %s, %s, %s)
         """
@@ -190,18 +181,21 @@ class DatabaseSeeder:
             self.execute_query(query, (course_id, short_name, full_name, desc, lectures, practices))
             courses[short_name] = course_id
 
+        print(f"  Inserted {len(courses)} courses")
         return courses
 
     def seed_instructors(self):
+        print("Seeding INSTRUCTORS...")
+
         instructors_data = []
         instructors = {}
 
         for i in range(NUM_INSTRUCTORS):
             instructor_id = str(uuid.uuid4())
-            first_name = fake.first_name()
-            last_name = fake.last_name()
-            email = f"{first_name.lower()}.{last_name.lower()}{i}@university.edu"
-            phone = self._truncate_phone(fake.phone_number())
+            first_name = self.truncate_field(fake.first_name(), 200)
+            last_name = self.truncate_field(fake.last_name(), 200)
+            email = f"instr{i}@university.edu"
+            phone = self.truncate_field(fake.numerify(text='###-###-####'), 20)
 
             instructors_data.append((
                 instructor_id,
@@ -220,9 +214,12 @@ class DatabaseSeeder:
         """
 
         self.executemany(query, instructors_data)
+        print(f"  Inserted {len(instructors)} instructors")
         return list(instructors.keys())
 
     def seed_instructor_courses(self, instructor_ids, courses):
+        print("Seeding INSTRUCTORS_COURSES...")
+
         assignments = []
         course_ids = list(courses.values())
 
@@ -239,8 +236,11 @@ class DatabaseSeeder:
         """
 
         self.executemany(query, assignments)
+        print(f"  Inserted {len(assignments)} assignments")
 
     def seed_students(self):
+        print("Seeding STUDENTS...")
+
         students_data = []
         student_ids = []
         degrees = ['Bachelor', 'Master', 'PhD']
@@ -248,10 +248,10 @@ class DatabaseSeeder:
 
         for i in range(NUM_STUDENTS):
             student_id = str(uuid.uuid4())
-            first_name = fake.first_name()
-            last_name = fake.last_name()
-            email = f"{first_name.lower()}.{last_name.lower()}{i}@student.university.edu"
-            phone = self._truncate_phone(fake.phone_number())
+            first_name = self.truncate_field(fake.first_name(), 200)
+            last_name = self.truncate_field(fake.last_name(), 200)
+            email = f"student{i}@university.edu"
+            phone = self.truncate_field(fake.numerify(text='###-###-####'), 20)
             course = random.randint(1, 4)
             degree = random.choice(degrees)
             speciality = random.choice(specialities)
@@ -271,7 +271,7 @@ class DatabaseSeeder:
             student_ids.append(student_id)
 
         query = """
-            INSERT INTO STUDENTS (ID, FIRST_NAME, LAST_NAME, EMAIL, PHONE, COURSE,
+            INSERT INTO STUDENTS (ID, FIRST_NAME, LAST_NAME, EMAIL, PHONE, COURSE, 
                                  EDUCATIONAL_DEGREE, SPECIALITY, ACTIVE)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
@@ -281,9 +281,12 @@ class DatabaseSeeder:
             batch = students_data[i:i+batch_size]
             self.executemany(query, batch)
 
+        print(f"  Inserted {len(students_data)} students")
         return student_ids
 
     def seed_student_course_groups(self, courses):
+        print("Seeding STUDENTS_COURSE_GROUPS...")
+
         groups_data = []
         groups = {}
         course_ids = list(courses.values())
@@ -301,17 +304,28 @@ class DatabaseSeeder:
         """
 
         self.executemany(query, groups_data)
+        print(f"  Inserted {len(groups)} groups")
         return list(groups.keys())
 
     def seed_student_group_membership(self, student_ids, group_ids):
+        print("Seeding STUDENTS_COURSE_GROUP_STUDENTS...")
+
         memberships = []
+        group_sizes = {gid: 0 for gid in group_ids}
+        max_group_size = 40
 
         for student_id in student_ids:
-            num_groups = random.randint(1, 3)
-            assigned_groups = random.sample(group_ids, min(num_groups, len(group_ids)))
+            num_groups = random.randint(1, 2)
+            
+            available_groups = [gid for gid in group_ids if group_sizes[gid] < max_group_size]
+            if not available_groups:
+                available_groups = group_ids
+            
+            assigned_groups = random.sample(available_groups, min(num_groups, len(available_groups)))
 
             for group_id in assigned_groups:
                 memberships.append((student_id, group_id))
+                group_sizes[group_id] += 1
 
         query = """
             INSERT INTO STUDENTS_COURSE_GROUP_STUDENTS (STUDENT_ID, GROUP_ID)
@@ -323,23 +337,27 @@ class DatabaseSeeder:
             batch = memberships[i:i+batch_size]
             self.executemany(query, batch)
 
+        print(f"  Inserted {len(memberships)} enrollments")
+
     def seed_schedule(self, courses, instructor_ids, group_ids, room_ids):
-        schedules = []
-        course_ids = list(courses.values())
-        week_days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']
-        lesson_ids = [1, 2, 3, 4, 5, 6]
+        print("Seeding SCHEDULE...")
 
         self.cursor.execute("SELECT INSTRUCTOR_ID, COURSE_ID FROM INSTRUCTORS_COURSES")
         valid_pairs = self.cursor.fetchall()
         self.conn.commit()
 
         if not valid_pairs:
+            print("  No instructor-course pairs found")
             return
 
-        target_schedules = NUM_SCHEDULES
-        created = 0
+        week_days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']
+        lesson_ids = [1, 2, 3, 4, 5, 6]
 
-        while created < target_schedules:
+        schedules = []
+        created = 0
+        target = NUM_SCHEDULES
+
+        while created < target:
             instructor_id, course_id = random.choice(valid_pairs)
             group_id = random.choice(group_ids)
             week_day = random.choice(week_days)
@@ -359,22 +377,34 @@ class DatabaseSeeder:
 
             if len(schedules) >= 10000:
                 self._insert_schedule_batch(schedules)
+                if created % 100000 == 0:
+                    print(f"  Inserted {created} schedules")
                 schedules = []
 
         if schedules:
             self._insert_schedule_batch(schedules)
 
+        print(f"  Inserted {created} schedules total")
+
     def _insert_schedule_batch(self, schedules):
         query = """
-            INSERT INTO SCHEDULE (COURSE_ID, INSTRUCTOR_ID, STUDENTS_COURSE_GROUP_ID,
+            INSERT INTO SCHEDULE (COURSE_ID, INSTRUCTOR_ID, STUDENTS_COURSE_GROUP_ID, 
                                  WEEK_DAY, LESSON_SCHEDULE_ID, ROOM_ID)
             VALUES (%s, %s, %s, %s, %s, %s)
         """
-        self.executemany(query, schedules)
+
+        try:
+            self.executemany(query, schedules)
+        except psycopg2.Error as e:
+            print(f"Schedule insert error: {e}")
+            self.conn.rollback()
 
     def run(self):
         try:
             self.connect()
+
+            print("Starting database seeding...")
+
             self.clear_tables()
 
             self.seed_lessons_schedule()
@@ -387,10 +417,18 @@ class DatabaseSeeder:
             self.seed_student_group_membership(student_ids, group_ids)
             self.seed_schedule(courses, instructor_ids, group_ids, room_ids)
 
-        except Exception:
+            print("\nSeeding completed successfully")
+            print(f"Database summary:")
+            print(f"  Instructors: {len(instructor_ids)}")
+            print(f"  Courses: {len(courses)}")
+            print(f"  Students: {len(student_ids)}")
+            print(f"  Rooms: {len(room_ids)}")
+            print(f"  Schedules: {NUM_SCHEDULES}")
+
+        except Exception as e:
+            print(f"Seeding failed: {e}")
             import traceback
             traceback.print_exc()
-            raise
         finally:
             self.disconnect()
 
